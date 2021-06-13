@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::time::{Duration, Instant};
 
+use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
 
 use console::{measure_text_width, Style};
@@ -156,24 +157,25 @@ impl<'a> TemplateVar<'a> {
     }
 }
 
+static VAR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\}\})|\{(\{|[^{}}]+\})").unwrap());
+static KEY_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?x)
+        ([^:]+)
+        (?:
+            :
+            ([<^>])?
+            ([0-9]+)?
+            (!)?
+            (?:\.([0-9a-z_]+(?:\.[0-9a-z_]+)*))?
+            (?:/([a-z_]+(?:\.[a-z_]+)*))?
+        )?
+    ",
+    )
+    .unwrap()
+});
+
 pub fn expand_template<F: FnMut(&TemplateVar<'_>) -> String>(s: &str, mut f: F) -> Cow<'_, str> {
-    lazy_static::lazy_static! {
-        static ref VAR_RE: Regex = Regex::new(r"(\}\})|\{(\{|[^{}}]+\})").unwrap();
-        static ref KEY_RE: Regex = Regex::new(
-            r"(?x)
-                ([^:]+)
-                (?:
-                    :
-                    ([<^>])?
-                    ([0-9]+)?
-                    (!)?
-                    (?:\.([0-9a-z_]+(?:\.[0-9a-z_]+)*))?
-                    (?:/([a-z_]+(?:\.[a-z_]+)*))?
-                )?
-            "
-        )
-        .unwrap();
-    }
     VAR_RE.replace_all(s, |caps: &Captures<'_>| {
         if caps.get(1).is_some() {
             return "}".into();

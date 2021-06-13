@@ -116,6 +116,16 @@ impl ProgressState {
         }
     }
 
+    /// The number of steps per second (f64)
+    pub fn per_sec_f64(&self) -> f64 {
+        let avg_time = self.avg_time_per_step().as_nanos();
+        if avg_time == 0 {
+            0.0
+        } else {
+            1_000_000_000f64 / avg_time as f64
+        }
+    }
+
     /// Call the provided `FnOnce` to update the state. Then redraw the
     /// progress bar if the state has changed.
     pub fn update_and_draw<F: FnOnce(&mut ProgressState)>(&mut self, f: F) {
