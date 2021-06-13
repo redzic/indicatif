@@ -261,7 +261,7 @@ impl ProgressStyle {
                 "elapsed_precise" => format!("{}", FormattedDuration(state.started.elapsed())),
                 "elapsed" => format!("{:#}", HumanDuration(state.started.elapsed())),
                 "per_sec" => format!("{}/s", state.per_sec()),
-                "fps" => format!("{} fps", state.per_sec_f64()),
+                "fps" => format!("{:.2} fps", state.per_sec_f64()),
                 "bytes_per_sec" => format!("{}/s", HumanBytes(state.per_sec())),
                 "binary_bytes_per_sec" => format!("{}/s", BinaryBytes(state.per_sec())),
                 "eta_precise" => format!("{}", FormattedDuration(state.eta())),
