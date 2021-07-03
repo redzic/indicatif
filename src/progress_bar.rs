@@ -6,12 +6,11 @@ use std::sync::{Arc, Mutex, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::state::{
-    MultiProgressState, ProgressDrawState, ProgressDrawTarget, ProgressDrawTargetKind,
-    ProgressState, Status,
+use crate::draw_target::{
+    MultiProgressAlignment, MultiProgressState, ProgressDrawState, ProgressDrawTarget,
 };
+use crate::state::{ProgressState, Status};
 use crate::style::ProgressStyle;
-use crate::utils::Estimate;
 use crate::{ProgressBarIter, ProgressIterator};
 
 /// A progress bar or spinner
@@ -50,23 +49,7 @@ impl ProgressBar {
     /// Creates a new progress bar with a given length and draw target
     pub fn with_draw_target(len: u64, target: ProgressDrawTarget) -> ProgressBar {
         ProgressBar {
-            state: Arc::new(Mutex::new(ProgressState {
-                style: ProgressStyle::default_bar(),
-                draw_target: target,
-                message: "".into(),
-                prefix: "".into(),
-                pos: 0,
-                len,
-                tick: 0,
-                draw_delta: 0,
-                draw_rate: 0,
-                draw_next: 0,
-                status: Status::InProgress,
-                started: Instant::now(),
-                est: Estimate::new(),
-                tick_thread: None,
-                steady_tick: 0,
-            })),
+            state: Arc::new(Mutex::new(ProgressState::new(len, target))),
         }
     }
 
@@ -260,6 +243,7 @@ impl ProgressBar {
             finished: state.is_finished(),
             force_draw: true,
             move_cursor: false,
+            alignment: Default::default(),
         };
 
         state.draw_target.apply_draw_state(draw_state).ok();
@@ -539,6 +523,7 @@ impl MultiProgress {
                 ordering: vec![],
                 draw_target,
                 move_cursor: false,
+                alignment: Default::default(),
             })),
         }
     }
@@ -556,6 +541,11 @@ impl MultiProgress {
     /// progress bars.
     pub fn set_move_cursor(&self, move_cursor: bool) {
         self.state.write().unwrap().move_cursor = move_cursor;
+    }
+
+    /// Set alignment flag
+    pub fn set_alignment(&self, alignment: MultiProgressAlignment) {
+        self.state.write().unwrap().alignment = alignment;
     }
 
     /// Adds a progress bar.
@@ -602,12 +592,7 @@ impl MultiProgress {
             "Draw state is inconsistent"
         );
 
-        pb.set_draw_target(ProgressDrawTarget {
-            kind: ProgressDrawTargetKind::Remote {
-                state: self.state.clone(),
-                idx,
-            },
-        });
+        pb.set_draw_target(ProgressDrawTarget::new_remote(self.state.clone(), idx));
         pb
     }
 
@@ -618,8 +603,8 @@ impl MultiProgress {
     /// If the passed progress bar does not satisfy the condition above,
     /// the `remove` method does nothing.
     pub fn remove(&self, pb: &ProgressBar) {
-        let idx = match &pb.state.lock().unwrap().draw_target.kind {
-            ProgressDrawTargetKind::Remote { state, idx, .. } => {
+        let idx = match &pb.state.lock().unwrap().draw_target.remote() {
+            Some((state, idx)) => {
                 // Check that this progress bar is owned by the current MultiProgress.
                 assert!(Arc::ptr_eq(&self.state, state));
                 *idx
@@ -633,12 +618,14 @@ impl MultiProgress {
     pub fn clear(&self) -> io::Result<()> {
         let mut state = self.state.write().unwrap();
         let move_cursor = state.move_cursor;
+        let alignment = state.alignment;
         state.draw_target.apply_draw_state(ProgressDrawState {
             lines: vec![],
             orphan_lines: 0,
             finished: true,
             force_draw: true,
             move_cursor,
+            alignment,
         })?;
 
         Ok(())
@@ -825,10 +812,7 @@ mod tests {
     }
 
     fn extract_index(pb: &ProgressBar) -> usize {
-        match pb.state.lock().unwrap().draw_target.kind {
-            ProgressDrawTargetKind::Remote { idx, .. } => idx,
-            _ => unreachable!(),
-        }
+        pb.state.lock().unwrap().draw_target.remote().unwrap().1
     }
 
     #[test]
